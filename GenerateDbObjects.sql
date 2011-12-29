@@ -25,11 +25,13 @@ go
 Declare 
 	@numViews int
 	,@numTables int
-	,@numProcs int
-	,@numStatementsInView int
-	,@numStatementsInProc int
+	,@numProcs int	
+	,@desiredCharsInView int
+	,@desiredCharsInProc int
+	,@desiredCharsInTrigger int	
 	,@viewBodyStatementText varchar(max)
 	,@procBodyStatementText varchar(max)
+	,@triggerBodyStatementText varchar(max)
 	,@tableColumns varchar(max)
 	,@objectCount int
 	,@objectName varchar(max)
@@ -38,40 +40,36 @@ Declare
 	,@i int
 	
 	
-set @numViews = 4000
-SET @numProcs = 2000
-set @numStatementsInView = 25
-set @numStatementsInProc = 50
-set @numTables = 4000
-	
+set @numViews = 40
+SET @numProcs = 40
+set @numTables = 40
+set @desiredCharsInView = 1000	
+set @desiredCharsInProc = 1000
+SET @desiredCharsInTrigger = 420
 
---set @numViews = 30
---SET @numProcs = 20
---set @numStatementsInView = 25
---set @numStatementsInProc = 50
---set @numTables = 4
 	
 set @viewBodyStatementText = 'select Id = NewID(), TextStuff = ''Some Text output column'', SomeNumber = number from master.dbo.spt_values where type=''P'''
+SET @triggerBodyStatementText = 'select * from inserted'
 set @procBodyStatementText = @viewBodyStatementText
 SET @tableColumns = '
 Id int primary key clustered
-,ColumnA int
-,ColumnB int
-,ColumnC int
-,ColumnD int
-,ColumnE int
-,ColumnF int
-,ColumnG int
-,ColumnH int
-,ColumnI int
-,ColumnJ int
-,ColumnK varchar(40)
-,ColumnL varchar(40)
-,ColumnM varchar(40)
-,ColumnN varchar(40)
-,ColumnO varchar(40)
-,ColumnP varchar(40)
-,ColumnQ varchar(40)'
+,ColumnA int not null default(100000)
+,ColumnB int not null default(100000)
+,ColumnC int not null default(100000)
+,ColumnD int not null default(100000)
+,ColumnE int not null default(100000)
+,ColumnF int not null default(100000)
+,ColumnG int not null default(100000)
+,ColumnH int not null default(100000)
+,ColumnI int not null default(100000)
+,ColumnJ int not null default(100000)
+,ColumnK varchar(40) not null default(''AAAAAAAA'')
+,ColumnL varchar(40) not null default(''AAAAAAAA'')
+,ColumnM varchar(40) not null default(''AAAAAAAA'')
+,ColumnN varchar(40) not null default(''AAAAAAAA'')
+,ColumnO varchar(40) not null default(''AAAAAAAA'')
+,ColumnP varchar(40) not null default(''AAAAAAAA'')
+,ColumnQ varchar(40) not null default(''AAAAAAAA'')'
 
 	
 --	
@@ -85,11 +83,11 @@ BEGIN
 	set @objectName = 'dbo.GeneratedView_' + right('000000' + convert(varchar,@objectCount + 1), 6)
 	set @sql = 'create view ' + @objectName + ' as' + char(13) + char(10)
 	set @i = 0
-	while (@i < @numStatementsInView)
+	
+	while (len(@sql) < @desiredCharsInView)
 	BEGIN
 		set @sql = @sql + @viewBodyStatementText
-		if (@i < @numStatementsInView - 1) set @sql = @sql + char(13) + char(10) + 'union all' + char(13) + char(10) 
-		set @i = @i + 1
+		if (len(@sql) < @desiredCharsInView) set @sql = @sql + char(13) + char(10) + 'union all' + char(13) + char(10) 		
 	END
 	
 	set @dropSql = 'if object_id(''' + @objectName + ''') is not null drop view ' + @objectName
@@ -111,12 +109,13 @@ BEGIN
 	set @objectName = 'dbo.GeneratedProc_' + right('000000' + convert(varchar,@objectCount + 1), 6)
 	set @sql = 'create proc ' + @objectName + ' as' + char(13) + char(10)
 	set @i = 0
-	while (@i < @numStatementsInProc)
+	
+	while (len(@sql) < @desiredCharsInProc)
 	BEGIN
 		set @sql = @sql + @procBodyStatementText
-		if (@i < @numStatementsInProc - 1) set @sql = @sql + char(13) + char(10) + 'union all' + char(13) + char(10) 
-		set @i = @i + 1
+		if (len(@sql) < @desiredCharsInProc) set @sql = @sql + char(13) + char(10) + 'union all' + char(13) + char(10) 		
 	END	
+	
 	set @dropSql = 'if object_id(''' + @objectName + ''') is not null drop proc ' + @objectName
 	exec (@dropSql)
 	EXEC (@sql)
@@ -137,7 +136,17 @@ BEGIN
 	set @sql = 'create table ' + @objectName + ' ( ' + @tableColumns + ' )  ' + char(13) + char(10)
 	set @dropSql = 'if object_id(''' + @objectName + ''') is not null drop table ' + @objectName
 	exec (@dropSql)
-	EXEC (@sql)
+	EXEC (@sql)	
+	
+	-- add a trigger
+	set @sql = 'create trigger Trig_' + replace(convert(varchar(max),newid()), '-', '') + ' on ' + @objectName + ' for update as '
+	while (len(@sql) < @desiredCharsInTrigger)
+	BEGIN
+		set @sql = @sql + @triggerBodyStatementText
+		if(len(@sql) < @desiredCharsInTrigger) set @sql = @sql + char(13) + char(10) + 'union all' + char(13) + char(10)
+	end
+	exec (@sql)	
+	
 	set @objectCount = @objectCount + 1
 	
 END
@@ -145,9 +154,12 @@ END
 
 -- Display totals
 
-SELECT ObjectType = o.type, TotalLinesOfText = count(len(definition)) from sys.sql_modules m
-JOIN sys.objects o ON o.object_id = m.object_id
-GROUP by o.type
-
-SELECT ObjectType = type_desc, NumObjects = count(*) from sys.objects where type in ('V', 'P', 'U') GROUP BY type_desc
-
+SELECT 
+	ObjectType = case WHEN grouping(o.type_desc) = 1 then 'Grand total:' ELSE o.type_desc end
+	,NumObjects = count(*)
+	,TotalChars = sum(len(definition)) 	
+from sys.sql_modules m
+	JOIN sys.objects o ON o.object_id = m.object_id
+GROUP by o.type_desc
+WITH rollup
+order by grouping(o.type_desc) 
