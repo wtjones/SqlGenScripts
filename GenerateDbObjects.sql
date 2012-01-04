@@ -29,6 +29,7 @@ Declare
 	,@desiredCharsInView int
 	,@desiredCharsInProc int
 	,@desiredCharsInTrigger int	
+	,@desiredCharsInTable int
 	,@viewBodyStatementText varchar(max)
 	,@procBodyStatementText varchar(max)
 	,@triggerBodyStatementText varchar(max)
@@ -46,32 +47,13 @@ set @numTables = 40
 set @desiredCharsInView = 1000	
 set @desiredCharsInProc = 1000
 SET @desiredCharsInTrigger = 420
+set @desiredCharsInTable = 4000
 
 	
 set @viewBodyStatementText = 'select Id = NewID(), TextStuff = ''Some Text output column'', SomeNumber = number from master.dbo.spt_values where type=''P'''
 SET @triggerBodyStatementText = 'select * from inserted'
 set @procBodyStatementText = @viewBodyStatementText
-SET @tableColumns = '
-Id int primary key clustered
-,ColumnA int not null default(100000)
-,ColumnB int not null default(100000)
-,ColumnC int not null default(100000)
-,ColumnD int not null default(100000)
-,ColumnE int not null default(100000)
-,ColumnF int not null default(100000)
-,ColumnG int not null default(100000)
-,ColumnH int not null default(100000)
-,ColumnI int not null default(100000)
-,ColumnJ int not null default(100000)
-,ColumnK varchar(40) not null default(''AAAAAAAA'')
-,ColumnL varchar(40) not null default(''AAAAAAAA'')
-,ColumnM varchar(40) not null default(''AAAAAAAA'')
-,ColumnN varchar(40) not null default(''AAAAAAAA'')
-,ColumnO varchar(40) not null default(''AAAAAAAA'')
-,ColumnP varchar(40) not null default(''AAAAAAAA'')
-,ColumnQ varchar(40) not null default(''AAAAAAAA'')'
 
-	
 --	
 -- Create views	
 --
@@ -81,13 +63,12 @@ set @objectCount=0
 while (@objectCount < @numViews)
 BEGIN
 	set @objectName = 'dbo.GeneratedView_' + right('000000' + convert(varchar,@objectCount + 1), 6)
-	set @sql = 'create view ' + @objectName + ' as' + char(13) + char(10)
+	set @sql = 'create view ' + @objectName + ' as' + char(13) + char(10) + @viewBodyStatementText
 	set @i = 0
 	
 	while (len(@sql) < @desiredCharsInView)
 	BEGIN
-		set @sql = @sql + @viewBodyStatementText
-		if (len(@sql) < @desiredCharsInView) set @sql = @sql + char(13) + char(10) + 'union all' + char(13) + char(10) 		
+		set @sql = @sql + char(13) + char(10) + 'union all' + char(13) + char(10) + @viewBodyStatementText				
 	END
 	
 	set @dropSql = 'if object_id(''' + @objectName + ''') is not null drop view ' + @objectName
@@ -107,13 +88,13 @@ set @objectCount=0
 while (@objectCount < @numProcs)
 BEGIN
 	set @objectName = 'dbo.GeneratedProc_' + right('000000' + convert(varchar,@objectCount + 1), 6)
-	set @sql = 'create proc ' + @objectName + ' as' + char(13) + char(10)
+	set @sql = 'create proc ' + @objectName + ' as' + char(13) + char(10) + @procBodyStatementText
 	set @i = 0
 	
 	while (len(@sql) < @desiredCharsInProc)
 	BEGIN
-		set @sql = @sql + @procBodyStatementText
-		if (len(@sql) < @desiredCharsInProc) set @sql = @sql + char(13) + char(10) + 'union all' + char(13) + char(10) 		
+		set @sql = @sql +   char(13) + char(10) + 'union all' + char(13) + char(10) + @procBodyStatementText
+		
 	END	
 	
 	set @dropSql = 'if object_id(''' + @objectName + ''') is not null drop proc ' + @objectName
@@ -133,17 +114,23 @@ set @objectCount=0
 while (@objectCount < @numTables)
 BEGIN
 	set @objectName = 'dbo.GeneratedTable_' + right('000000' + convert(varchar,@objectCount + 1), 6)
-	set @sql = 'create table ' + @objectName + ' ( ' + @tableColumns + ' )  ' + char(13) + char(10)
+	set @sql = 'create table ' + @objectName + ' (Id int primary key clustered'
+	while (len(@sql) < @desiredCharsInTable)
+	BEGIN
+		set @sql = @sql + char(13) + char(10) + ',Column_' + replace(convert(varchar(max),newid()), '-', '') + ' varchar(500) not null default(''AAAAAAAAA'')'
+	END
+	set @sql = @sql + ')'
+	print @sql
 	set @dropSql = 'if object_id(''' + @objectName + ''') is not null drop table ' + @objectName
 	exec (@dropSql)
 	EXEC (@sql)	
 	
 	-- add a trigger
 	set @sql = 'create trigger Trig_' + replace(convert(varchar(max),newid()), '-', '') + ' on ' + @objectName + ' for update as '
+	set @sql = @sql + char(13) + char(10) + @triggerBodyStatementText
 	while (len(@sql) < @desiredCharsInTrigger)
 	BEGIN
-		set @sql = @sql + @triggerBodyStatementText
-		if(len(@sql) < @desiredCharsInTrigger) set @sql = @sql + char(13) + char(10) + 'union all' + char(13) + char(10)
+		set @sql = @sql + char(13) + char(10) + 'union all' +  char(13) + char(10) + @triggerBodyStatementText		
 	end
 	exec (@sql)	
 	
